@@ -1,0 +1,152 @@
+DevOps test
+
+
+Task:
+Create a github or bitbucket git repository where you should include the following:
+
+1- A simple app/webapp/script (you can choose your favourite language go/python/ruby/perl/bash/haskell/clojure/java, etc)  that listen on port 8080,
+   and replay with a message like: "Hi there!!" or something along the lines to a GET / request and also log the request to /tmp/even.log
+   if the source IP addresses (the one where the request come from) 4th octet is even and to /tmp/odd.log if its odd.
+
+   So assuming your app/script is called "hello" and your ip is 10.22.1.2:
+   After starting you app: ./hello
+   if we use curl to do a get:
+   curl http://10.22.1.2:8080  (assuming I'm doing the curl from the same machine where the app is running)
+   we get a "hi there!!" back and a log entry must be created on /tmp/even.log, similar if the client is doing curl from an odd ip.
+
+2 - vagrant file  that allows us to `vagrant up` and provision a linux box (you can choose whatever distro you like, ubuntu, centos.. etc)
+  with nginx installed and configured as a proxy to the app you written on the previous task. You can choose any configuration management you like, but the deploy and configuration of nginx and your app must be done with a CM tool (chef, salt, puppet, ansible, cfengine..etc)
+  The behaviour for your app must be the same even with nginx as proxy.
+  NOTE: if you are not sure how to make vagrant use one of the CM tools supported check: https://www.vagrantup.com/docs/provisioning/
+
+3 - This task is not mandatory but it would be a bonus point, if you can do the same as on step 2 but instead of vagrant and cm tools, use docker and docker-compose to accomplish the same.
+
+To successfully accomplish this assignment we should get from you:
+   - The url of a git repository, which will contain, the app you written and the vagrant file at least.
+   - Of course if you also are willing to do the 3rd task it will include the Dockerfile and docker-compose.yml.
+   - And instructions on how we should run what you did.
+
+Solution:
+
+1) STEP-1 
+Create python3 script hello.py:
+---
+#!/usr/bin/env python
+
+import socket
+import re
+
+host = ''
+port = 8080
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.bind((host, port))
+sock.listen(1)
+
+def extractIP( ipStr):
+    l = re.split('(\d{,3}\.\d{,3}\.\d{,3})\.(\d{,3})', ipStr)
+    return l[1:-1]
+
+# Loop forever, listening for requests:
+while True:
+    csock, caddr = sock.accept()
+    print ("Connection from: " + repr(caddr[0]))
+    req = csock.recv(1024) # get the request, 1kB max
+    print (req)
+    con_ip= extractIP(repr(caddr[0]))
+    print ("last octet:", con_ip[1])
+    logline="Request:"+str(req)+" From: "+repr(caddr)
+    if (int(con_ip[1]) % 2 == 0):
+        f = open("/tmp/even.log","w")
+        f.write(logline)
+        f.close()
+    else:
+        f = open("/tmp/odd.log", "w")
+        f.write(logline)
+        f.close()
+
+    match = re.match(b'GET / HTTP/1.(\d+)\s', req)
+    if match:
+        print ("GET request is Ok! \n")
+        csock.sendall(b"""HTTP/1.0 200 OK
+Content-Type: text/html
+
+<html>
+<head>
+<title>Hi there!!</title>
+</head>
+<body>
+Hi there!!
+</body>
+</html>
+""")
+    else:
+        print ("Returning 404")
+        csock.sendall(b"HTTP/1.0 404 Not Found\r\n")
+    csock.close()
+---
+
+2) STEP-2 
+
+Installing Vagrant
+Update:
+apt-get update
+apt-get upgrade
+
+Installing Virtualbox:
+$ sudo apt-get install virtualbox
+
+Installing Vagrant:
+$ sudo apt-get install vagrant
+
+$ mkdir devopstask
+$ cd devopstask/
+
+Make Vagrantfile:
+$vagrant init puppetlabs/ubuntu-14.04-64-nocm
+
+Edit Vagrantfile
+---
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# All Vagrant configuration is done below. The "2" in Vagrant.configure
+# configures the configuration version (we support older styles for
+# backwards compatibility). Please don't change it unless you know what
+# you're doing.
+Vagrant.configure(2) do |config|
+
+#Check if Nginx listen 80 port
+  config.vm.provision "checknginx", type: "shell" do |checknginx|
+         checknginx.path = "check_nginx.sh"
+  end
+
+#Install Puppet on VMs
+  config.vm.provision "puppetinstall", type: "shell" do |pkginstall|
+        pkginstall.path = "package_install.sh"
+        pkginstall.args = "puppet"
+  end
+
+# Define and configure proxy
+ config.vm.define :websrv do |websrv|
+        websrv.vm.box = "puppetlabs/ubuntu-14.04-64-nocm"
+        websrv.vm.hostname = "websrv"
+        websrv.vm.network "private_network", ip: "192.168.33.10", virtualbox__intnet: true
+        websrv.vm.network "public_network", ip: "192.168.0.110"
+ end
+
+#Apply Puppet manifests (Nginx)
+ config.vm.provision :puppet do |puppet|
+        puppet.manifests_path = "puppet/manifests"
+        puppet.manifest_file = "site.pp"
+        puppet.module_path = "puppet/modules"
+        puppet.options="--verbose --debug"
+  end
+end
+---
+
+Run box
+$vagrant up websrv --provider=virtualbox --no-provision
+
+
+
+
