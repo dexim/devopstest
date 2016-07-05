@@ -25,6 +25,7 @@ To successfully accomplish this assignment we should get from you:
    - The url of a git repository, which will contain, the app you written and the vagrant file at least.
    - Of course if you also are willing to do the 3rd task it will include the Dockerfile and docker-compose.yml.
    - And instructions on how we should run what you did.
+
 -----------------------------
 Instructions:
 
