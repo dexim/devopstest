@@ -1,54 +1,37 @@
-#!/usr/bin/env python
+from flask import Flask, request
+import re,base64
 
-import socket
-import re
+app = Flask(__name__)
 
-host = ''
-port = 8080
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.bind((host, port))
-sock.listen(1)
-
-def extractIP( ipStr):
+def extractIP(ipStr):
     l = re.split('(\d{,3}\.\d{,3}\.\d{,3})\.(\d{,3})', ipStr)
     return l[1:-1]
 
-# Loop forever, listening for requests:
-while True:
-    csock, caddr = sock.accept()
-    print ("Connection from: " + repr(caddr[0]))
-    req = csock.recv(1024) # get the request, 1kB max
-    print (req)
-    con_ip= extractIP(repr(caddr[0]))
-    print ("last octet:", con_ip[1])
-    logline="Request:"+str(req)+" From: "+repr(caddr)
+@app.route('/')
+
+def hello_world():
+    if request.headers.getlist("X-Forwarded-For"):
+        ip = request.headers.getlist("X-Forwarded-For")[0]
+    else:
+        ip = request.remote_addr
+    print ("IP:", ip)
+    con_ip= extractIP(ip)
+#    print ("last octet:", con_ip[1])
+    r_headers =  str(request.headers)
+    r_data= str(request.get_data().decode('utf-8'))
+    logline="From: "+repr(ip)+" Headers:"+r_headers+" Data:"+r_data
     if (int(con_ip[1]) % 2 == 0):
-        f = open("/tmp/odd.log","w")
+        f = open("/tmp/even.log","a")
         f.write(logline)
         f.close()
-        print ("even")
+#        print ("even")
     else:
-        f = open("/tmp/odd.log", "w")
+        f = open("/tmp/odd.log", "a")
         f.write(logline)
         f.close()
-        print ("odd")
+#        print ("odd")
 
-    match = re.match(b'GET / HTTP/1.(\d+)\s', req)
-    if match:
-        print ("GET request is Ok! \n")
-        csock.sendall(b"""HTTP/1.0 200 OK
-Content-Type: text/html
+    return 'Hello, World!'
 
-<html>
-<head>
-<title>Hi there!!</title>
-</head>
-<body>
-Hi there!!
-</body>
-</html>
-""")
-    else:
-        print ("Returning 404")
-        csock.sendall(b"HTTP/1.0 404 Not Found\r\n")
-    csock.close()
+if __name__ == '__main__':
+      app.run(host='0.0.0.0', port=8080)
